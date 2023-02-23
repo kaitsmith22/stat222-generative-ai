@@ -51,11 +51,11 @@ class CelebA(datasets.CelebA):
         rec_l = int(w * (1 - axis) + h * axis)
 
         if axis == 0:
-            start = np.random.randint(0, h)
+            start = np.random.randint(0, h - rec_w)
             masked_image[start: start + rec_w,
                   0: rec_l] = 0
         else:
-            start = np.random.randint(0, w)
+            start = np.random.randint(0, w - rec_l)
             masked_image[0: rec_l,
                   start: start + rec_w] = (0, 0, 0) 
             
@@ -74,14 +74,14 @@ class CelebA(datasets.CelebA):
             X = self.transform(X)
             mask = self.transform(mask)
 
-        return mask, X
+        return X, mask
     
     def display(self, index: int) -> None:
         """
             Display the masked and ground truth image at an index 
         """
 
-        mask, X = self.__getitem(index)
+        mask, X = self.__getitem__(index)
         
         fig, (ax1, ax2) = plt.subplots(1, 2)
         ax1.set_title('Mask')
