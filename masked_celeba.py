@@ -46,18 +46,19 @@ class CelebA(datasets.CelebA):
         # get whether the obscured region is a row or column
         axis = np.random.randint(low = 0, high = 2)
         
-        # if axis is 0, then the rectangle is horizontal
+        # if axis is 1, then the rectangle is horizontal
         rec_w = int(w * self.proportion * axis + h * self.proportion * (1 - axis))
+
         rec_l = int(w * (1 - axis) + h * axis)
 
         if axis == 0:
-            start = np.random.randint(0, h)
+            start = np.random.randint(0, h - rec_w)
             masked_image[start: start + rec_w,
-                  0: rec_l] = 0
+                  0: rec_l,:] = 0
         else:
-            start = np.random.randint(0, w)
+            start = np.random.randint(0, h - rec_w)
             masked_image[0: rec_l,
-                  start: start + rec_w] = (0, 0, 0) 
+                  start: start + rec_w, :] = 0
             
         return masked_image
             
@@ -74,17 +75,17 @@ class CelebA(datasets.CelebA):
             X = self.transform(X)
             mask = self.transform(mask)
 
-        return mask, X
+        return X, mask
     
     def display(self, index: int) -> None:
         """
             Display the masked and ground truth image at an index 
         """
 
-        mask, X = self.__getitem(index)
+        X, mask = self.__getitem__(index)
         
         fig, (ax1, ax2) = plt.subplots(1, 2)
         ax1.set_title('Mask')
-        ax1.imshow(mask)
+        ax1.imshow(mask.permute(2,1, 0))
         ax2.set_title('Transformed Image')
-        ax2.imshow(X)
+        ax2.imshow(X.permute(2,1, 0))
