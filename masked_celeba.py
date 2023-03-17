@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import time
 from collections import namedtuple
 import PIL
 from noise import pnoise2
@@ -15,7 +16,7 @@ class CelebA(datasets.CelebA):
     Custom dataset for image inpainting at CelebA.
     """
 
-    def __init__(self, data_root, transform, proportion, noise = 'perlin', download=False, split = "train",):
+    def __init__(self, data_root, transform, proportion, noise = 'perlin', download=False, split = "train", orig_img_shape = (218, 178)):
         """Custom dataset for image inpainting at CelebA.
 
         Args:
@@ -37,6 +38,18 @@ class CelebA(datasets.CelebA):
 
         self.noise = noise
 
+        # initialize matrix to vectorize perlin noise
+        tups = np.empty(orig_img_shape[0] * orig_img_shape[1], dtype=tuple)
+        ind = 0
+        for i in range(orig_img_shape[0]):
+            for j in range(orig_img_shape[1]):
+                tups[ind] = (i, j)
+                ind += 1
+
+        self.ind_matrix =tups
+
+
+
 
     def _get_rect(self, shape):
         """
@@ -56,14 +69,19 @@ class CelebA(datasets.CelebA):
 
         rec_l = int(w * (1 - axis) + h * axis)
 
-        if axis == 0:
-            start = np.random.randint(0, h - rec_w)
-            mask[start: start + rec_w,
-            0: rec_l] = 1
-        else:
-            start = np.random.randint(0, h - rec_w)
-            mask[0: rec_l,
-            start: start + rec_w] = 1
+        start = np.random.randint(0, h - rec_w)
+        start = h // 2
+        mask[start: start + rec_w,
+        0: rec_l] = 1
+
+        # if axis == 0:
+        #     start = np.random.randint(0, h - rec_w)
+        #     mask[start: start + rec_w,
+        #     0: rec_l] = 1
+        # else:
+        #     start = np.random.randint(0, h - rec_w)
+        #     mask[0: rec_l,
+        #     start: start + rec_w] = 1
 
         return mask
 
@@ -73,8 +91,6 @@ class CelebA(datasets.CelebA):
         """
         q = np.quantile(image_data, at)
         return (image_data<q)*1
-
-
 
 
     def _get_perlin(self, shape = (200, 200),
@@ -88,18 +104,29 @@ class CelebA(datasets.CelebA):
         if not seed:
             seed = np.random.randint(0, 100)
 
-        arr = np.zeros(shape)
-        for i in range(shape[0]):
-            for j in range(shape[1]):
-                arr[i][j] = pnoise2(i / scale,
-                                    j / scale,
-                                    octaves = octaves,
-                                    persistence = persistence,
-                                    lacunarity = lacunarity,
-                                    repeatx = 1024,
-                                    repeaty = 1024,
-                                    base = seed)
+        g = lambda ind: pnoise2(ind[0] / scale,
+                                      ind[1] / scale,
+                                      octaves=octaves,
+                                      persistence=persistence,
+                                      lacunarity=lacunarity,
+                                      repeatx=1024,
+                                      repeaty=1024,
+                                      base=222)
 
+        # arr = np.zeros(shape)
+        # for i in range(shape[0]):
+        #     for j in range(shape[1]):
+        #         arr[i][j] = pnoise2(i / scale,
+        #                             j / scale,
+        #                             octaves = octaves,
+        #                             persistence = persistence,
+        #                             lacunarity = lacunarity,
+        #                             repeatx = 1024,
+        #                             repeaty = 1024,
+        #                             base = seed)
+        pn = np.vectorize(g)
+        arr = pn(self.ind_matrix)
+        arr = arr.reshape(shape)
         max_arr = np.max(arr)
         min_arr = np.min(arr)
         norm_me = lambda x: (x - min_arr) / (max_arr - min_arr)
@@ -134,6 +161,7 @@ class CelebA(datasets.CelebA):
 
         if self.noise == 'perlin':
             perlin_mask = self._get_perlin(shape = (np.array(X).shape[0], np.array(X).shape[1]))
+
             mask = self._binarize(perlin_mask)
         else:
             mask = self._get_rect(shape = (np.array(X).shape[0], np.array(X).shape[1]))

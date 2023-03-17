@@ -22,6 +22,7 @@ if __name__ == '__main__':
                         default='configs/vae_base_config.yaml')
 
     args = parser.parse_args()
+    print('config is ', args.filename)
     # read config file
     with open(args.filename, 'r') as file:
         try:

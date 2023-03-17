@@ -53,7 +53,7 @@ class VAEExperiment():
             Training loop for the experiment
         """
         since = time.time()
-
+        count = 0
         for epoch in range(self.num_epochs):
             print(f'Epoch {epoch}/{self.num_epochs - 1}')
             print('-' * 10)
@@ -94,7 +94,10 @@ class VAEExperiment():
                     # multiply by batch size (image.size(0)), because we want to find loss for the entire epoch,
                     # and not just for loss of the batch
                     running_loss += loss * image.size(0)
-                    break
+                    count += 1
+                    if count == 10:
+                        count = 0
+                        break
 
                 # update the learning rate if this is training iteration
                 if phase == 'train':
