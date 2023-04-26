@@ -11,6 +11,7 @@ import torch
 from torch.utils.data import Dataset
 import torchvision.datasets as datasets
 import matplotlib.pyplot as plt
+import random
 
 class MET():
     """
@@ -104,7 +105,7 @@ class MET():
         Threshold normalized array into values of 0 and 1
         """
         q = np.quantile(image_data, at)
-        return (image_data<q)*1
+        return (image_data>q)*1
 
     def _pregenerate_perlin(self, num_perlin, shape, scale = 100, octaves = 6,
         persistence = 0.5,
@@ -195,7 +196,10 @@ class MET():
         """
             Get item from the CelebA dataset with masked image
         """
-        X = PIL.Image.open(os.path.join(self.data_root, self.split, self.filename[index]))
+        # randomly sample a file to open
+        ind = random.randint(0, len(self.filename) - 1)
+
+        X = PIL.Image.open(os.path.join(self.data_root, self.split, self.filename[ind]))
 
         if self.noise == 'perlin':
             mask = self._get_perlin(shape = (np.array(X).shape[0], np.array(X).shape[1]))

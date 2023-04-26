@@ -31,6 +31,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 
 from masked_egyptian import MET
+from transformers.models import mask2former
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -86,6 +87,12 @@ def parse_args():
         default=False,
         action="store_true",
         help="Flag to add prior preservation loss.",
+    )
+    parser.add_argument(
+        "--num_images",
+        type=int,
+        default=None,
+        help="Number of training images you want to generate.",
     )
     parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="The weight of prior preservation loss.")
     parser.add_argument(
@@ -180,7 +187,7 @@ def parse_args():
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument("--hub_token", type=str, default=True, help="The token to use to push to the Model Hub.")
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -254,6 +261,47 @@ def parse_args():
 
     return args
 
+def prepare_mask_and_masked_image(image, mask):
+    image = np.array(image.convert("RGB"))
+    image = image[None].transpose(0, 3, 1, 2)
+    image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+
+    mask = np.array(mask.convert("L"))
+    mask = mask.astype(np.float32) / 255.0
+    mask = mask[None, None]
+    mask[mask < 0.5] = 0
+    mask[mask >= 0.5] = 1
+    mask = torch.from_numpy(mask)
+
+    masked_image = image * (mask < 0.5)
+
+    return mask, masked_image
+
+
+# generate random masks
+def random_mask(im_shape, ratio=1, mask_full_image=False):
+    mask = Image.new("L", im_shape, 0)
+    draw = ImageDraw.Draw(mask)
+    size = (random.randint(0, int(im_shape[0] * ratio)), random.randint(0, int(im_shape[1] * ratio)))
+    # use this to always mask the whole image
+    if mask_full_image:
+        size = (int(im_shape[0] * ratio), int(im_shape[1] * ratio))
+    limits = (im_shape[0] - size[0] // 2, im_shape[1] - size[1] // 2)
+    center = (random.randint(size[0] // 2, limits[0]), random.randint(size[1] // 2, limits[1]))
+    draw_type = random.randint(0, 1)
+    if draw_type == 0 or mask_full_image:
+        draw.rectangle(
+            (center[0] - size[0] // 2, center[1] - size[1] // 2, center[0] + size[0] // 2, center[1] + size[1] // 2),
+            fill=255,
+        )
+    else:
+        draw.ellipse(
+            (center[0] - size[0] // 2, center[1] - size[1] // 2, center[0] + size[0] // 2, center[1] + size[1] // 2),
+            fill=255,
+        )
+
+    return mask
+
 
 class DreamBoothDataset(Dataset):
     """
@@ -266,6 +314,7 @@ class DreamBoothDataset(Dataset):
         instance_data_root,
         instance_prompt,
         tokenizer,
+        num_images = None,
         class_data_root=None,
         class_prompt=None,
         size=512,
@@ -279,16 +328,19 @@ class DreamBoothDataset(Dataset):
         if not self.instance_data_root.exists():
             raise ValueError("Instance images root doesn't exists.")
 
-        self.image_data = MET(r"data\met_data\facsimiles", split = 'test', transform=transforms.Compose([
+        self.image_data = MET(self.instance_data_root, split = 'train', transform=transforms.Compose([
                         transforms.Resize(512),
                         transforms.CenterCrop(512)
                     ]),
                     proportion=0.15,
                     noise='perlin')
 
-        self.num_instance_images = len(self.image_data)
+        self.num_instance_images = len(os.listdir(os.path.join(self.image_data.data_root, self.image_data.split)))
         self.instance_prompt = instance_prompt
-        self._length = self.num_instance_images
+        if not num_images:
+          self._length = self.num_instance_images
+        else:
+          self._length = num_images
 
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
@@ -314,6 +366,11 @@ class DreamBoothDataset(Dataset):
             ]
         )
 
+        self.mask_transform = transforms.Compose(
+            [transforms.ToTensor()]
+          )
+        
+
     def __len__(self):
         return self._length
 
@@ -326,7 +383,7 @@ class DreamBoothDataset(Dataset):
 
         example["PIL_images"] = instance_image
         example["instance_images"] = self.image_transforms(instance_image)
-        example["masked_image"] = masked_image
+        example["masked_image"] = self.image_transforms(masked_image)
         example["mask"] = mask
 
         example["instance_prompt_ids"] = self.tokenizer(
@@ -462,6 +519,7 @@ def main():
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
+        num_images = args.num_images,
         class_prompt=args.class_prompt,
         tokenizer=tokenizer,
         size=args.resolution,
@@ -484,9 +542,10 @@ def main():
         for example in examples:
             pil_image = example["PIL_images"]
             # generate a random mask
+            mask = random_mask(pil_image.size, 1, False)
             mask = example["mask"]
             # prepare mask and masked image
-            masked_image = example["masked_image"]
+            mask, masked_image = prepare_mask_and_masked_image(pil_image, mask)
 
             masks.append(mask)
             masked_images.append(masked_image)
