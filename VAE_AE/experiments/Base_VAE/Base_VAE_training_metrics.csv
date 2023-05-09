@@ -1,0 +1,4 @@
+,Train_Loss,Val_Loss
+0,tensor(4.4893e-05),tensor(0.0003)
+1,tensor(3.8491e-05),tensor(0.0003)
+2,tensor(3.4782e-05),tensor(0.0003)
