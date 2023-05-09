@@ -4,7 +4,7 @@ Repository for Group A code, working towards benchmarking generative AI models f
 ## Repository Structure
 
 - EDA_Preprocess
-    - Scripts to perform basic EDA on the CelebA dataset, as well as the code to programatically create       the damage masks for the images from the Met.
+    - Scripts to perform basic EDA on the CelebA dataset, as well as the code to programatically create       the damage masks for the images from the Met with naturally occuring damage.
 
 - VAE_AE
     - Code and experiment results for initial experiments to run both variational and convolutional           auto-encoders.
